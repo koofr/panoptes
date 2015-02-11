@@ -4,8 +4,9 @@ package panoptes
 
 import (
 	"fmt"
-	"github.com/go-fsnotify/fsevents"
 	"time"
+
+	"github.com/go-fsnotify/fsevents"
 )
 
 type DarwinWatcher struct {
@@ -61,21 +62,9 @@ var noteDescription = map[fsevents.EventFlags]string{
 	fsevents.ItemIsSymlink:     "IsSymLink",
 }
 
-func logEvent(event fsevents.Event) {
-	note := ""
-	for bit, description := range noteDescription {
-		if event.Flags&bit == bit {
-			note += description + " "
-		}
-	}
-	fmt.Printf("EventID: %d Path: %s Flags: %s\n", event.ID, event.Path, note)
-}
-
 func (w *DarwinWatcher) translateEvents() {
 	for events := range w.raw.Events {
 		for _, event := range events {
-			logEvent(event)
-			fmt.Printf("event flags %s 0x%0X\n", event.Path, event.Flags)
 
 			switch {
 			case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
