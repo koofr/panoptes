@@ -14,7 +14,8 @@ type LinWinWatcher struct {
 	ignoredPaths []string
 	events       chan Event
 	errors       chan error
-	renames      map[uint32]string
+	movedFrom    map[uint32]chan string
+	movedTo      map[uint32]chan string
 	renamesLock  sync.Mutex
 	raw          *fsnotify.Watcher
 	isClosed     bool

@@ -22,7 +22,7 @@ func NewWatcher(paths []string, ignorePaths []string) (w *LinWinWatcher, err err
 		ignoredPaths: ignorePaths,
 		events:       make(chan Event),
 		errors:       make(chan error),
-		renames:      make(map[uint32]string),
+		movedTo:      make(map[uint32]chan string),
 		raw:          watcher,
 	}
 
@@ -58,34 +58,29 @@ func (w *LinWinWatcher) translateEvents() {
 		case event.RawOp&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE:
 			w.sendEvent(newEvent(event.Name, Write))
 		case event.RawOp&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM:
-			w.renames[event.EventID] = event.Name
-			time.AfterFunc(500*time.Millisecond, func() {
-				w.renamesLock.Lock()
-				defer w.renamesLock.Unlock()
-				_, has := w.renames[event.EventID]
-				if has {
-					// file was moved out of watched folder
+			w.movedTo[event.EventID] = make(chan string, 1)
+
+			go func(event fsnotify.Event) {
+				select {
+				case newPth := <-w.movedTo[event.EventID]:
+					w.sendEvent(newRenameEvent(newPth, event.Name))
+				case <-time.After(500 * time.Millisecond):
 					w.sendEvent(newEvent(event.Name, Remove))
-					delete(w.renames, event.EventID)
 				}
-			})
+			}(event)
+
 		case event.RawOp&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO:
-			w.renamesLock.Lock()
-			defer w.renamesLock.Unlock()
-			oldName, has := w.renames[event.EventID]
-			if has {
-				// file inside watched directory was renamed
-				delete(w.renames, event.EventID)
-				w.sendEvent(newRenameEvent(event.Name, oldName))
-			} else {
-				// file was moved into watched directory
-				w.sendEvent(newEvent(event.Name, Create))
-			}
-			w.sendEvent(newEvent(event.Name, Write))
+
+			go func(event fsnotify.Event) {
+				select {
+				case w.movedTo[event.EventID] <- event.Name:
+				default:
+					w.sendEvent(newEvent(event.Name, Create))
+				}
+			}(event)
 		}
 	}
 }
-
 func (w *LinWinWatcher) recursiveAdd(root string) error {
 
 	err := filepath.Walk(root, func(pth string, info os.FileInfo, err error) error {
