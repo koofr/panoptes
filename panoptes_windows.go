@@ -32,6 +32,8 @@ func NewWatcher(paths []string, ignorePaths []string) (w *LinWinWatcher, err err
 		return
 	}
 
+	watcher.Recursive = true
+
 	w = &LinWinWatcher{
 		watchedPaths: paths,
 		ignoredPaths: ignorePaths,
