@@ -1,7 +1,7 @@
 package panoptes_test
 
 import (
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -131,57 +131,48 @@ var _ = Describe("Watcher", func() {
 		Eventually(w.Errors()).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
 	})
 
+	It("should work when hundreds of files are created at once", func() {
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		n := 500
+
+		for i := 0; i < n; i++ {
+			e := writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+			Eventually(w.Events()).Should(Receive(Equal(e)))
+		}
+	})
+
+	It("should work when hundreds of files are deleted at once", func() {
+
+		n := 500
+		for i := 0; i < n; i++ {
+			writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+		}
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		for i := 0; i < n; i++ {
+			e := remove(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)))
+			Eventually(w.Events()).Should(Receive(Equal(e)))
+		}
+	})
+
+	It("should work when hundreds of files are renamed at once", func() {
+		n := 500
+		for i := 0; i < n; i++ {
+			writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+		}
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		for i := 0; i < n; i++ {
+			oldPth := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
+			newPth := filepath.Join(dir, fmt.Sprintf("a_file%d.txt", i))
+			e2 := rename(oldPth, newPth)
+			Eventually(w.Events()).Should(Receive(Equal(e2)))
+			Eventually(w.Events()).Should(Receive(Equal(panoptes.Event{Path: newPth, Op: panoptes.Write})))
+		}
+	})
+
 })
-
-func newWatcher(path string) panoptes.Watcher {
-	w, err := panoptes.NewWatcher([]string{path}, []string{})
-	Expect(err).NotTo(HaveOccurred())
-	return w
-}
-
-func closeWatcher(w panoptes.Watcher) {
-	time.Sleep(250 * time.Millisecond)
-	Consistently(w.Events()).ShouldNot(Receive())
-	Consistently(w.Errors()).ShouldNot(Receive())
-	err := w.Close()
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func mkdir(path string) panoptes.Event {
-	err := os.Mkdir(path, os.ModeDir|os.ModePerm)
-	Expect(err).NotTo(HaveOccurred())
-
-	return panoptes.Event{
-		Path: path,
-		Op:   panoptes.Create,
-	}
-}
-
-func remove(path string) panoptes.Event {
-	err := os.Remove(path)
-	Expect(err).NotTo(HaveOccurred())
-	return panoptes.Event{
-		Path: path,
-		Op:   panoptes.Remove,
-	}
-}
-
-func writeFile(path string, contents string) panoptes.Event {
-	err := ioutil.WriteFile(path, []byte("Hello world!"), os.ModePerm)
-	Expect(err).NotTo(HaveOccurred())
-
-	return panoptes.Event{
-		Path: path,
-		Op:   panoptes.Write,
-	}
-}
-
-func rename(oldpth, newpth string) panoptes.Event {
-	err := os.Rename(oldpth, newpth)
-	Expect(err).NotTo(HaveOccurred())
-	return panoptes.Event{
-		Path:    newpth,
-		OldPath: oldpth,
-		Op:      panoptes.Rename,
-	}
-}
