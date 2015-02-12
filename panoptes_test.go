@@ -166,7 +166,7 @@ var _ = Describe("Watcher", func() {
 				oldPth := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
 				newPth := filepath.Join(dir, fmt.Sprintf("a_file%d.txt", i))
 				e := rename(oldPth, newPth)
-				Eventually(w.Events()).Should(Receive(Equal(e)))
+				Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e)))
 			}
 		})
 
@@ -226,7 +226,7 @@ var _ = Describe("Watcher", func() {
 				oldPth := filepath.Join(dir, fmt.Sprintf("folder%d", i))
 				newPth := filepath.Join(dir, fmt.Sprintf("a_folder%d", i))
 				e := rename(oldPth, newPth)
-				Eventually(w.Events()).Should(Receive(Equal(e)))
+				Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e)))
 			}
 		})
 	})
