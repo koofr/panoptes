@@ -4,35 +4,32 @@ package panoptes
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/go-fsnotify/fsevents"
+	"path/filepath"
+	"time"
 )
 
 type DarwinWatcher struct {
-	ignoredPaths []string
-	events       chan Event
-	errors       chan error
-	renames      chan string
-	renamesDone  chan error
-	raw          *fsevents.EventStream
-	isClosed     bool
+	events   chan Event
+	errors   chan error
+	movedTo  chan string
+	raw      *fsevents.EventStream
+	isClosed bool
 }
 
-func NewWatcher(paths []string, ignoredPaths []string) (w *DarwinWatcher, err error) {
+func NewWatcher(path string) (w *DarwinWatcher, err error) {
+
 	raw := &fsevents.EventStream{
-		Paths:   paths,
+		Paths:   []string{path},
 		Latency: 500 * time.Millisecond,
-		Flags:   fsevents.FileEvents,
+		Flags:   fsevents.FileEvents | fsevents.NoDefer,
 	}
 
 	w = &DarwinWatcher{
-		ignoredPaths: ignoredPaths,
-		events:       make(chan Event),
-		errors:       make(chan error),
-		renames:      make(chan string, 1),
-		renamesDone:  make(chan error, 1),
-		raw:          raw,
+		events:  make(chan Event),
+		errors:  make(chan error),
+		movedTo: make(chan string, 0),
+		raw:     raw,
 	}
 	go w.translateEvents()
 	w.raw.Start()
@@ -65,48 +62,51 @@ var noteDescription = map[fsevents.EventFlags]string{
 func (w *DarwinWatcher) translateEvents() {
 	for events := range w.raw.Events {
 		for _, event := range events {
-
-			switch {
-			case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
-				if event.Flags&fsevents.ItemModified == fsevents.ItemModified {
-					// rename started
-
-					select {
-					case w.renames <- event.Path:
-						select {
-						case <-w.renamesDone:
-							// rename finished, all ok
-						case <-time.After(750 * time.Millisecond):
-							// rename did not finish
-							w.sendEvent(newEvent(event.Path, Remove))
-						}
-					default:
-						panic("FAILEDDDDDDDDD")
-					}
-
-				} else {
-					select {
-					case oldPth := <-w.renames:
-						// rename ended
-						w.sendEvent(newRenameEvent(event.Path, oldPth))
-						w.sendEvent(newEvent(event.Path, Write))
-						w.renamesDone <- nil
-					case <-time.After(750 * time.Millisecond):
-						w.sendEvent(newEvent(event.Path, Create))
-						w.sendEvent(newEvent(event.Path, Write))
-					}
+			if w.raw.Paths[0] == event.Path || event.Path == filepath.Join("private", w.raw.Paths[0]) {
+				if event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved {
+					w.errors <- WatchedRootRemovedErr
 
 				}
+				continue
+			}
+			fmt.Printf("received event %s %v 0x%0X\n", event.Path, event.ID, event.Flags)
+			switch {
+			case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed &&
+				event.Flags&fsevents.ItemModified == fsevents.ItemModified:
+
+				// rename started MOVED_FROM
+
+				go func(event fsevents.Event) {
+					select {
+					case w.movedTo <- event.Path:
+					case <-time.After(500 * time.Millisecond):
+						w.sendEvent(newEvent(event.Path, Remove))
+					}
+				}(event)
+
+			case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
+				// rename ended MOVED_TO
+
+				go func(event fsevents.Event) {
+					select {
+					case oldPth := <-w.movedTo:
+						w.sendEvent(newRenameEvent(event.Path, oldPth))
+					case <-time.After(500 * time.Millisecond):
+						w.sendEvent(newEvent(event.Path, Create))
+					}
+				}(event)
 
 			case event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved:
-				if w.isWatchedRoot(event.Path) {
-					w.errors <- WatchedRootRemovedErr
-				} else {
-					w.sendEvent(newEvent(event.Path, Remove))
-				}
-			case event.Flags&fsevents.ItemModified == fsevents.ItemModified:
-				w.sendEvent(newEvent(event.Path, Write))
+				w.sendEvent(newEvent(event.Path, Remove))
+
+			case event.Flags&fsevents.ItemModified == fsevents.ItemModified &&
+				event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
+				w.sendEvent(newEvent(event.Path, Modify))
+
 			case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
+				w.sendEvent(newEvent(event.Path, Create))
+
+			case event.Flags&fsevents.ItemIsDir == fsevents.ItemIsDir && event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
 				w.sendEvent(newEvent(event.Path, Create))
 			}
 		}
@@ -114,17 +114,7 @@ func (w *DarwinWatcher) translateEvents() {
 	}
 }
 
-func (w *DarwinWatcher) isWatchedRoot(path string) bool {
-	for _, root := range w.WatchedPaths() {
-		if root == path {
-			return true
-		}
-	}
-	return false
-}
-
 func (w *DarwinWatcher) sendEvent(e Event) {
-	fmt.Printf("sending %+v\n", e)
 	w.events <- e
 }
 
@@ -136,14 +126,6 @@ func (w *DarwinWatcher) Errors() <-chan error {
 	return w.errors
 }
 
-func (w *DarwinWatcher) WatchedPaths() []string {
-	return w.raw.Paths
-}
-
-func (w *DarwinWatcher) IgnoredPaths() []string {
-	return w.ignoredPaths
-}
-
 func (w *DarwinWatcher) Close() error {
 	if w.isClosed {
 		return nil
@@ -151,6 +133,6 @@ func (w *DarwinWatcher) Close() error {
 	w.raw.Stop()
 	close(w.events)
 	close(w.errors)
-	close(w.raw.Events)
+	// close(w.raw.Events)
 	return nil
 }
