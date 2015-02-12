@@ -125,7 +125,7 @@ var _ = Describe("Watcher", func() {
 		Eventually(w.Errors(), 3*time.Second).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
 	})
 
-	PContext("with a lot of files", func() {
+	Context("with a lot of files", func() {
 
 		It("should work when hundreds of files are created at once", func() {
 			w = newWatcher(dir)
