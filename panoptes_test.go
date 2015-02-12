@@ -2,13 +2,14 @@ package panoptes_test
 
 import (
 	"fmt"
-	"github.com/koofr/panoptes"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/koofr/panoptes"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Watcher", func() {
