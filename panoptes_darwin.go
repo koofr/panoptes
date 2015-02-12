@@ -69,7 +69,6 @@ func (w *DarwinWatcher) translateEvents() {
 				}
 				continue
 			}
-			fmt.Printf("received event %s %v 0x%0X\n", event.Path, event.ID, event.Flags)
 			switch {
 			case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed &&
 				event.Flags&fsevents.ItemModified == fsevents.ItemModified:
