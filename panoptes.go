@@ -1,15 +1,17 @@
 package panoptes
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Op uint32
 type RawOp uint32
 
 const (
-	Create Op = 1 << iota
-	Write
-	Remove
-	Rename
+	Create Op = 1 << iota // 1
+	Modify                // 2
+	Remove                // 4
+	Rename                // 8
 )
 
 var (
@@ -33,7 +35,5 @@ func newRenameEvent(path string, oldPath string) Event {
 type Watcher interface {
 	Events() <-chan Event
 	Errors() <-chan error
-	WatchedPaths() []string
-	IgnoredPaths() []string
 	Close() error
 }

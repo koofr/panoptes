@@ -10,7 +10,7 @@ import (
 )
 
 func newWatcher(path string) panoptes.Watcher {
-	w, err := panoptes.NewWatcher([]string{path}, []string{})
+	w, err := panoptes.NewWatcher(path)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return w
 }
@@ -42,13 +42,28 @@ func remove(path string) panoptes.Event {
 	}
 }
 
-func writeFile(path string, contents string) panoptes.Event {
+func createFile(path string, contents string) panoptes.Event {
 	err := ioutil.WriteFile(path, []byte("Hello world!"), os.ModePerm)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return panoptes.Event{
 		Path: path,
-		Op:   panoptes.Write,
+		Op:   panoptes.Create,
+	}
+}
+
+func modifyFile(path string, contents string) panoptes.Event {
+
+	fp, err := os.OpenFile(path, os.O_TRUNC|os.O_RDWR, os.ModePerm)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	var _ = fp
+	_, err = fp.WriteString(contents)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	fp.Close()
+
+	return panoptes.Event{
+		Path: path,
+		Op:   panoptes.Modify,
 	}
 }
 

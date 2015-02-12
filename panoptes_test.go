@@ -2,13 +2,13 @@ package panoptes_test
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"time"
-
 	"github.com/koofr/panoptes"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
 )
 
 var _ = Describe("Watcher", func() {
@@ -24,15 +24,15 @@ var _ = Describe("Watcher", func() {
 	It("should fire event when file is created", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
-		e1 := writeFile(filepath.Join(dir, "file.txt"), "hello world")
-		Eventually(w.Events()).Should(Receive(Equal(e1)))
+		e1 := createFile(filepath.Join(dir, "file.txt"), "hello world")
+		Eventually(w.Events()).Should(Receive(Equal(e1)), "receive create event")
 	})
 
 	It("should fire event when folder is created", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
 		e := mkdir(filepath.Join(dir, "folder"))
-		Eventually(w.Events()).Should(Receive(Equal(e)))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create event")
 	})
 
 	It("should fire events when file in new folder is created", func() {
@@ -40,18 +40,18 @@ var _ = Describe("Watcher", func() {
 		defer closeWatcher(w)
 		e1 := mkdir(filepath.Join(dir, "folder"))
 		Eventually(w.Events()).Should(Receive(Equal(e1)))
-		e3 := writeFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
-		Eventually(w.Events()).Should(Receive(Equal(e3)))
+		e2 := createFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
+		Eventually(w.Events()).Should(Receive(Equal(e2)))
 
 	})
 
-	It("should fire events when file in new folder is created", func() {
+	It("should fire events when folder in new folder is created", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
 		e1 := mkdir(filepath.Join(dir, "folder"))
 		Eventually(w.Events()).Should(Receive(Equal(e1)))
-		e3 := writeFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
-		Eventually(w.Events()).Should(Receive(Equal(e3)))
+		e2 := mkdir(filepath.Join(dir, "folder", "folder2"))
+		Eventually(w.Events()).Should(Receive(Equal(e2)))
 	})
 
 	It("should fire events when file is deleted", func() {
@@ -59,10 +59,10 @@ var _ = Describe("Watcher", func() {
 		defer closeWatcher(w)
 		e1 := mkdir(filepath.Join(dir, "folder"))
 		Eventually(w.Events()).Should(Receive(Equal(e1)), "receive mkdir event")
-		e3 := writeFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
-		Eventually(w.Events()).Should(Receive(Equal(e3)), "receive writeFile event")
-		e4 := remove(filepath.Join(dir, "folder", "file.txt"))
-		Eventually(w.Events()).Should(Receive(Equal(e4)), "receive remove event")
+		e2 := createFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
+		Eventually(w.Events()).Should(Receive(Equal(e2)), "receive createFile event")
+		e3 := remove(filepath.Join(dir, "folder", "file.txt"))
+		Eventually(w.Events()).Should(Receive(Equal(e3)), "receive remove event")
 	})
 
 	It("should fire events when folder is deleted", func() {
@@ -70,37 +70,31 @@ var _ = Describe("Watcher", func() {
 		defer closeWatcher(w)
 		e1 := mkdir(filepath.Join(dir, "folder"))
 		Eventually(w.Events()).Should(Receive(Equal(e1)), "receive mkdir event")
-		e3 := remove(filepath.Join(dir, "folder"))
-		Eventually(w.Events()).Should(Receive(Equal(e3)), "receive remove event")
+		e2 := remove(filepath.Join(dir, "folder"))
+		Eventually(w.Events()).Should(Receive(Equal(e2)), "receive remove event")
 	})
 
 	It("should fire events when file is modified", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
 		path := filepath.Join(dir, "test.txt")
-		e2 := writeFile(path, "test")
-		Eventually(w.Events()).Should(Receive(Equal(e2)), "receive write file event")
+		e1 := createFile(path, "test")
+		Eventually(w.Events()).Should(Receive(Equal(e1)), "receive create file event")
+		e2 := modifyFile(path, "test123")
+		Eventually(w.Events()).Should(Receive(Equal(e2)), "receive modify file event")
 
-		fp, err := os.OpenFile(path, os.O_APPEND|os.O_RDWR, os.ModePerm)
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = fp.WriteString("something new")
-		Expect(err).NotTo(HaveOccurred())
-
-		fp.Close()
-		Eventually(w.Events()).Should(Receive(Equal(panoptes.Event{Path: path, Op: panoptes.Write})))
+		if runtime.GOOS == "windows" {
+			Eventually(w.Events()).Should(Receive(Equal(e2)), "receive second modify file event")
+		}
 	})
 
 	It("should fire event when file is renamed", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
-		e1 := writeFile(filepath.Join(dir, "file.txt"), "hello world")
+		e1 := createFile(filepath.Join(dir, "file.txt"), "hello world")
 		Eventually(w.Events()).Should(Receive(Equal(e1)))
-
 		e2 := rename(filepath.Join(dir, "file.txt"), filepath.Join(dir, "file2.txt"))
-		Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(e2)))
-		//Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: filepath.Join(dir, "file2.txt"), Op: panoptes.Write})))
-
+		Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e2)))
 	})
 
 	It("should fire event when file is moved to watched folder", func() {
@@ -108,10 +102,9 @@ var _ = Describe("Watcher", func() {
 		defer closeWatcher(w)
 		oldPath := filepath.Join(dir, "..", "file.txt")
 		newPath := filepath.Join(dir, "file.txt")
-		writeFile(oldPath, "hello world")
+		createFile(oldPath, "hello world")
 		rename(oldPath, newPath)
 		Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: newPath, Op: panoptes.Create})))
-		//Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: newPath, Op: panoptes.Write})))
 	})
 
 	It("should fire event when file is moved out of watched folder", func() {
@@ -119,7 +112,7 @@ var _ = Describe("Watcher", func() {
 		defer closeWatcher(w)
 		oldPath := filepath.Join(dir, "file.txt")
 		newPath := filepath.Join(dir, "..", "file.txt")
-		writeFile(oldPath, "hello world")
+		createFile(oldPath, "hello world")
 		rename(oldPath, newPath)
 		Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: oldPath, Op: panoptes.Remove})))
 	})
@@ -128,7 +121,7 @@ var _ = Describe("Watcher", func() {
 		w = newWatcher(dir)
 		defer closeWatcher(w)
 		os.Remove(dir)
-		Eventually(w.Errors()).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
+		Eventually(w.Errors(), 3*time.Second).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
 	})
 
 	It("should work when hundreds of files are created at once", func() {
@@ -138,7 +131,7 @@ var _ = Describe("Watcher", func() {
 		n := 500
 
 		for i := 0; i < n; i++ {
-			e := writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+			e := createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			Eventually(w.Events()).Should(Receive(Equal(e)))
 		}
 	})
@@ -147,7 +140,7 @@ var _ = Describe("Watcher", func() {
 
 		n := 500
 		for i := 0; i < n; i++ {
-			writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+			createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 		}
 		w = newWatcher(dir)
 		defer closeWatcher(w)
@@ -161,7 +154,7 @@ var _ = Describe("Watcher", func() {
 	It("should work when hundreds of files are renamed at once", func() {
 		n := 500
 		for i := 0; i < n; i++ {
-			writeFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+			createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 		}
 		w = newWatcher(dir)
 		defer closeWatcher(w)
@@ -169,9 +162,68 @@ var _ = Describe("Watcher", func() {
 		for i := 0; i < n; i++ {
 			oldPth := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
 			newPth := filepath.Join(dir, fmt.Sprintf("a_file%d.txt", i))
-			e2 := rename(oldPth, newPth)
-			Eventually(w.Events()).Should(Receive(Equal(e2)))
-			//Eventually(w.Events()).Should(Receive(Equal(panoptes.Event{Path: newPth, Op: panoptes.Write})))
+			e := rename(oldPth, newPth)
+			Eventually(w.Events()).Should(Receive(Equal(e)))
+		}
+	})
+
+	It("should work when hundreds of files are modified at once", func() {
+		n := 500
+		for i := 0; i < n; i++ {
+			createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
+		}
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		for i := 0; i < n; i++ {
+			e := modifyFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "hello world")
+			Eventually(w.Events()).Should(Receive(Equal(e)), "receive modify event")
+			if runtime.GOOS == "windows" {
+				Eventually(w.Events()).Should(Receive(Equal(e)), "receive second modify file event")
+			}
+		}
+	})
+
+	It("should work when hundreds of folders are created at once", func() {
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		n := 500
+
+		for i := 0; i < n; i++ {
+			e := mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
+			Eventually(w.Events()).Should(Receive(Equal(e)))
+		}
+	})
+
+	It("should work when hundreds of files are deleted at once", func() {
+
+		n := 500
+		for i := 0; i < n; i++ {
+			mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
+		}
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		for i := 0; i < n; i++ {
+			e := remove(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
+			Eventually(w.Events()).Should(Receive(Equal(e)))
+		}
+	})
+
+	It("should work when hundreds of files are renamed at once", func() {
+		n := 500
+		for i := 0; i < n; i++ {
+			mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
+		}
+		w = newWatcher(dir)
+		defer closeWatcher(w)
+
+		for i := 0; i < n; i++ {
+			oldPth := filepath.Join(dir, fmt.Sprintf("folder%d", i))
+			newPth := filepath.Join(dir, fmt.Sprintf("a_folder%d", i))
+			e := rename(oldPth, newPth)
+			Eventually(w.Events()).Should(Receive(Equal(e)))
 		}
 	})
 
