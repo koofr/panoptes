@@ -14,6 +14,12 @@ import (
 
 var _ = Describe("Watcher", func() {
 
+	if runtime.GOOS == "darwin" {
+		SetDefaultEventuallyTimeout(5 * time.Second)
+	} else {
+		SetDefaultEventuallyTimeout(2 * time.Second)
+	}
+
 	var dir string
 	var testNum int
 
