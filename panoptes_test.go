@@ -94,7 +94,7 @@ var _ = Describe("Watcher", func() {
 		e1 := createFile(filepath.Join(dir, "file.txt"), "hello world")
 		Eventually(w.Events()).Should(Receive(Equal(e1)))
 		e2 := rename(filepath.Join(dir, "file.txt"), filepath.Join(dir, "file2.txt"))
-		Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e2)))
+		Eventually(w.Events()).Should(Receive(Equal(e2)))
 	})
 
 	It("should fire event when file is moved to watched folder", func() {
@@ -104,7 +104,7 @@ var _ = Describe("Watcher", func() {
 		w := newWatcher(dir)
 		defer closeWatcher(w)
 		rename(oldPath, newPath)
-		Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: newPath, Op: panoptes.Create})))
+		Eventually(w.Events()).Should(Receive(Equal(panoptes.Event{Path: newPath, Op: panoptes.Create})))
 	})
 
 	It("should fire event when file is moved out of watched folder", func() {
@@ -114,14 +114,14 @@ var _ = Describe("Watcher", func() {
 		w := newWatcher(dir)
 		defer closeWatcher(w)
 		rename(oldPath, newPath)
-		Eventually(w.Events(), 3*time.Second).Should(Receive(Equal(panoptes.Event{Path: oldPath, Op: panoptes.Remove})))
+		Eventually(w.Events()).Should(Receive(Equal(panoptes.Event{Path: oldPath, Op: panoptes.Remove})))
 	})
 
 	It("should report error when watched folder is removed", func() {
 		w := newWatcher(dir)
 		defer closeWatcher(w)
 		os.Remove(dir)
-		Eventually(w.Errors(), 3*time.Second).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
+		Eventually(w.Errors()).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
 	})
 
 	It("should quit properly", func() {
@@ -142,7 +142,7 @@ var _ = Describe("Watcher", func() {
 
 			for i := 0; i < n; i++ {
 				e := createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
-				Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e)))
+				Eventually(w.Events()).Should(Receive(Equal(e)))
 			}
 		})
 
@@ -159,7 +159,7 @@ var _ = Describe("Watcher", func() {
 
 			for i := 0; i < n; i++ {
 				e := remove(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)))
-				Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e)))
+				Eventually(w.Events()).Should(Receive(Equal(e)))
 			}
 		})
 
@@ -177,7 +177,7 @@ var _ = Describe("Watcher", func() {
 				oldPth := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
 				newPth := filepath.Join(dir, fmt.Sprintf("a_file%d.txt", i))
 				e := rename(oldPth, newPth)
-				Eventually(w.Events(), 4*time.Second).Should(Receive(Equal(e)))
+				Eventually(w.Events()).Should(Receive(Equal(e)))
 			}
 		})
 
@@ -193,7 +193,7 @@ var _ = Describe("Watcher", func() {
 				e := modifyFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "hello world")
 				Eventually(w.Events()).Should(Receive(Equal(e)), "receive modify event")
 				if runtime.GOOS == "windows" {
-					Eventually(w.Events(), 2*time.Second).Should(Receive(Equal(e)), "receive second modify file event")
+					Eventually(w.Events()).Should(Receive(Equal(e)), "receive second modify file event")
 				}
 			}
 		})
@@ -234,7 +234,7 @@ var _ = Describe("Watcher", func() {
 				oldPth := filepath.Join(dir, fmt.Sprintf("folder%d", i))
 				newPth := filepath.Join(dir, fmt.Sprintf("a_folder%d", i))
 				e := rename(oldPth, newPth)
-				Eventually(w.Events(), 4*time.Second).Should(Receive(Equal(e)))
+				Eventually(w.Events()).Should(Receive(Equal(e)))
 			}
 		})
 	})
