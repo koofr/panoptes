@@ -18,6 +18,7 @@ type LinuxWatcher struct {
 	movedTo     map[uint32]chan string
 	created     map[string]chan error
 	raw         *fsnotify.Watcher
+	quitCh      chan error
 	isClosed    bool
 }
 
@@ -33,11 +34,13 @@ func NewWatcher(path string) (w *LinuxWatcher, err error) {
 		errors:      make(chan error),
 		movedTo:     make(map[uint32]chan string),
 		created:     make(map[string]chan error),
+		quitCh:      make(chan error),
 		raw:         watcher,
 	}
 
 	go w.translateEvents()
 	go w.translateErrors()
+
 	if err := w.recursiveAdd(path); err != nil {
 		return nil, err
 	}
@@ -45,53 +48,58 @@ func NewWatcher(path string) (w *LinuxWatcher, err error) {
 }
 
 func (w *LinuxWatcher) translateEvents() {
-	for event := range w.raw.Events {
-		switch {
-		case event.RawOp&syscall.IN_DELETE == syscall.IN_DELETE:
-			w.sendEvent(newEvent(event.Name, Remove))
-		case event.RawOp&syscall.IN_DELETE_SELF == syscall.IN_DELETE_SELF:
-			if w.watchedPath == event.Name {
-				w.errors <- WatchedRootRemovedErr
-			} else {
-				continue
-			}
-		case event.RawOp&syscall.IN_CREATE == syscall.IN_CREATE:
-			if event.RawOp&syscall.IN_ISDIR == syscall.IN_ISDIR {
-				w.recursiveAdd(event.Name)
-				w.sendEvent(newEvent(event.Name, Create))
-			} else {
-				w.created[event.Name] = make(chan error, 1)
-				w.created[event.Name] <- nil
-			}
-		case event.RawOp&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE:
-			select {
-			case <-w.created[event.Name]:
-				w.sendEvent(newEvent(event.Name, Create))
-			default:
-				w.sendEvent(newEvent(event.Name, Modify))
-			}
-
-		case event.RawOp&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM:
-			w.movedTo[event.EventID] = make(chan string, 1)
-
-			go func(event fsnotify.Event) {
-				select {
-				case newPth := <-w.movedTo[event.EventID]:
-					w.sendEvent(newRenameEvent(newPth, event.Name))
-				case <-time.After(500 * time.Millisecond):
-					w.sendEvent(newEvent(event.Name, Remove))
+	for {
+		select {
+		case <-w.quitCh:
+			return
+		case event := <-w.raw.Events:
+			switch {
+			case event.RawOp&syscall.IN_DELETE == syscall.IN_DELETE:
+				w.sendEvent(newEvent(event.Name, Remove))
+			case event.RawOp&syscall.IN_DELETE_SELF == syscall.IN_DELETE_SELF:
+				if w.watchedPath == event.Name {
+					w.errors <- WatchedRootRemovedErr
+				} else {
+					continue
 				}
-			}(event)
-
-		case event.RawOp&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO:
-
-			go func(event fsnotify.Event) {
-				select {
-				case w.movedTo[event.EventID] <- event.Name:
-				default:
+			case event.RawOp&syscall.IN_CREATE == syscall.IN_CREATE:
+				if event.RawOp&syscall.IN_ISDIR == syscall.IN_ISDIR {
+					w.recursiveAdd(event.Name)
 					w.sendEvent(newEvent(event.Name, Create))
+				} else {
+					w.created[event.Name] = make(chan error, 1)
+					w.created[event.Name] <- nil
 				}
-			}(event)
+			case event.RawOp&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE:
+				select {
+				case <-w.created[event.Name]:
+					w.sendEvent(newEvent(event.Name, Create))
+				default:
+					w.sendEvent(newEvent(event.Name, Modify))
+				}
+
+			case event.RawOp&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM:
+				w.movedTo[event.EventID] = make(chan string, 1)
+
+				go func(event fsnotify.Event) {
+					select {
+					case newPth := <-w.movedTo[event.EventID]:
+						w.sendEvent(newRenameEvent(newPth, event.Name))
+					case <-time.After(500 * time.Millisecond):
+						w.sendEvent(newEvent(event.Name, Remove))
+					}
+				}(event)
+
+			case event.RawOp&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO:
+
+				go func(event fsnotify.Event) {
+					select {
+					case w.movedTo[event.EventID] <- event.Name:
+					default:
+						w.sendEvent(newEvent(event.Name, Create))
+					}
+				}(event)
+			}
 		}
 	}
 }
@@ -120,8 +128,13 @@ func (w *LinuxWatcher) Errors() <-chan error {
 }
 
 func (w *LinuxWatcher) translateErrors() {
-	for err := range w.raw.Errors {
-		w.errors <- err
+	for {
+		select {
+		case <-w.quitCh:
+			return
+		case err := <-w.raw.Errors:
+			w.errors <- err
+		}
 	}
 }
 
@@ -134,6 +147,8 @@ func (w *LinuxWatcher) Close() error {
 		return nil
 	}
 	w.isClosed = true
+	close(w.quitCh)
+
 	err := w.raw.Close()
 	close(w.events)
 	close(w.errors)
