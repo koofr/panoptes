@@ -22,7 +22,7 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 
 	raw := &fsevents.EventStream{
 		Paths:   []string{path},
-		Latency: 500 * time.Millisecond,
+		Latency: 250 * time.Millisecond,
 		Flags:   fsevents.FileEvents | fsevents.NoDefer,
 	}
 
@@ -33,9 +33,10 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 		quitCh:  make(chan error),
 		raw:     raw,
 	}
+	w.raw.Start()
 	go w.processRenames()
 	go w.translateEvents()
-	w.raw.Start()
+
 	return
 }
 
@@ -72,8 +73,8 @@ func (w *DarwinWatcher) translateEvents() {
 			if !ok {
 				return
 			}
-			for _, event := range events {
 
+			for _, event := range events {
 				if w.raw.Paths[0] == event.Path || event.Path == filepath.Join("private", w.raw.Paths[0]) {
 					if event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved {
 						w.errors <- WatchedRootRemovedErr
@@ -85,15 +86,12 @@ func (w *DarwinWatcher) translateEvents() {
 				case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
 					w.movedTo <- event.Path
 				case event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved:
-					go w.sendEvent(newEvent(event.Path, Remove))
-
+					w.sendEvent(newEvent(event.Path, Remove))
 				case event.Flags&fsevents.ItemModified == fsevents.ItemModified &&
 					event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
-					go w.sendEvent(newEvent(event.Path, Modify))
-
+					w.sendEvent(newEvent(event.Path, Modify))
 				case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
-					go w.sendEvent(newEvent(event.Path, Create))
-
+					w.sendEvent(newEvent(event.Path, Create))
 				}
 			}
 		}
