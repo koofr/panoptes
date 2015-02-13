@@ -52,7 +52,10 @@ func (w *LinuxWatcher) translateEvents() {
 		select {
 		case <-w.quitCh:
 			return
-		case event := <-w.raw.Events:
+		case event, ok := <-w.raw.Events:
+			if !ok {
+				return
+			}
 			switch {
 			case event.RawOp&syscall.IN_DELETE == syscall.IN_DELETE:
 				w.sendEvent(newEvent(event.Name, Remove))
@@ -132,8 +135,10 @@ func (w *LinuxWatcher) translateErrors() {
 		select {
 		case <-w.quitCh:
 			return
-		case err := <-w.raw.Errors:
-			w.errors <- err
+		case err, ok := <-w.raw.Errors:
+			if ok {
+				w.errors <- err
+			}
 		}
 	}
 }
@@ -147,9 +152,8 @@ func (w *LinuxWatcher) Close() error {
 		return nil
 	}
 	w.isClosed = true
-	close(w.quitCh)
-
 	err := w.raw.Close()
+	close(w.quitCh)
 	close(w.events)
 	close(w.errors)
 	return err
