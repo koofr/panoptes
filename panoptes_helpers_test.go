@@ -21,6 +21,8 @@ func closeWatcher(w panoptes.Watcher) {
 	gomega.Consistently(w.Errors()).ShouldNot(gomega.Receive())
 	err := w.Close()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(w.Events()).To(gomega.BeClosed())
+	gomega.Expect(w.Errors()).To(gomega.BeClosed())
 }
 
 func mkdir(path string) panoptes.Event {
