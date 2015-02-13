@@ -34,6 +34,7 @@ type WinWatcher struct {
 	created     map[string]chan error
 	raw         *fsnotify.Watcher
 	isClosed    bool
+	quitCh      chan error
 }
 
 func NewWatcher(path string) (w *WinWatcher, err error) {
@@ -51,6 +52,7 @@ func NewWatcher(path string) (w *WinWatcher, err error) {
 		movedTo:     make(chan string),
 		created:     make(map[string]chan error),
 		raw:         watcher,
+		quitCh:      make(chan error),
 	}
 
 	go w.translateEvents()
@@ -135,6 +137,8 @@ func (w *WinWatcher) Close() error {
 		return nil
 	}
 	w.isClosed = true
+	close(w.quitCh)
+
 	err := w.raw.Close()
 	close(w.events)
 	close(w.errors)
