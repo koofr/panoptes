@@ -127,11 +127,11 @@ var _ = Describe("Watcher", func() {
 
 	Context("with a lot of files", func() {
 
+		n := 100
+
 		It("should work when hundreds of files are created at once", func() {
 			w = newWatcher(dir)
 			defer closeWatcher(w)
-
-			n := 500
 
 			for i := 0; i < n; i++ {
 				e := createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
@@ -141,7 +141,6 @@ var _ = Describe("Watcher", func() {
 
 		It("should work when hundreds of files are deleted at once", func() {
 
-			n := 500
 			for i := 0; i < n; i++ {
 				createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			}
@@ -155,7 +154,7 @@ var _ = Describe("Watcher", func() {
 		})
 
 		It("should work when hundreds of files are renamed at once", func() {
-			n := 500
+
 			for i := 0; i < n; i++ {
 				createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			}
@@ -171,7 +170,7 @@ var _ = Describe("Watcher", func() {
 		})
 
 		It("should work when hundreds of files are modified at once", func() {
-			n := 500
+
 			for i := 0; i < n; i++ {
 				createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			}
@@ -191,17 +190,14 @@ var _ = Describe("Watcher", func() {
 			w = newWatcher(dir)
 			defer closeWatcher(w)
 
-			n := 500
-
 			for i := 0; i < n; i++ {
 				e := mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
 				Eventually(w.Events()).Should(Receive(Equal(e)))
 			}
 		})
 
-		It("should work when hundreds of files are deleted at once", func() {
+		It("should work when hundreds of folders are deleted at once", func() {
 
-			n := 500
 			for i := 0; i < n; i++ {
 				mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
 			}
@@ -214,8 +210,8 @@ var _ = Describe("Watcher", func() {
 			}
 		})
 
-		It("should work when hundreds of files are renamed at once", func() {
-			n := 500
+		It("should work when hundreds of folders are renamed at once", func() {
+
 			for i := 0; i < n; i++ {
 				mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
 			}
