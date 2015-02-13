@@ -86,12 +86,12 @@ func (w *DarwinWatcher) translateEvents() {
 				case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
 					w.movedTo <- event.Path
 				case event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved:
-					w.sendEvent(newEvent(event.Path, Remove))
+					go w.sendEvent(newEvent(event.Path, Remove))
 				case event.Flags&fsevents.ItemModified == fsevents.ItemModified &&
 					event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
-					w.sendEvent(newEvent(event.Path, Modify))
+					go w.sendEvent(newEvent(event.Path, Modify))
 				case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
-					w.sendEvent(newEvent(event.Path, Create))
+					go w.sendEvent(newEvent(event.Path, Create))
 				}
 			}
 		}
