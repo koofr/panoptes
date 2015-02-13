@@ -125,6 +125,14 @@ var _ = Describe("Watcher", func() {
 		Eventually(w.Errors(), 3*time.Second).Should(Receive(Equal(panoptes.WatchedRootRemovedErr)))
 	})
 
+	It("should quit properly", func() {
+		w = newWatcher(dir)
+		w.Close()
+		createFile(filepath.Join(dir, "annoy.me"), "hello world")
+		Eventually(w.Errors()).Should(BeClosed())
+		Eventually(w.Events()).Should(BeClosed())
+	})
+
 	Context("with a lot of files", func() {
 
 		n := 100
