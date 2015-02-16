@@ -15,9 +15,9 @@ import (
 var _ = Describe("Watcher", func() {
 
 	if runtime.GOOS == "darwin" {
-		SetDefaultEventuallyTimeout(5 * time.Second)
+		SetDefaultEventuallyTimeout(10 * time.Second)
 	} else {
-		SetDefaultEventuallyTimeout(2 * time.Second)
+		SetDefaultEventuallyTimeout(5 * time.Second)
 	}
 
 	var dir string
@@ -158,10 +158,9 @@ var _ = Describe("Watcher", func() {
 				createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			}
 
-			time.Sleep(3 * time.Second)
-
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				e := remove(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)))
@@ -174,10 +173,10 @@ var _ = Describe("Watcher", func() {
 			for i := 0; i < n; i++ {
 				createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
 			}
-			time.Sleep(3 * time.Second)
 
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				oldPth := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
@@ -194,6 +193,7 @@ var _ = Describe("Watcher", func() {
 			}
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				e := modifyFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "hello world")
@@ -207,6 +207,7 @@ var _ = Describe("Watcher", func() {
 		It("should work when hundreds of folders are created at once", func() {
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				e := mkdir(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
@@ -221,6 +222,7 @@ var _ = Describe("Watcher", func() {
 			}
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				e := remove(filepath.Join(dir, fmt.Sprintf("folder%d", i)))
@@ -235,6 +237,7 @@ var _ = Describe("Watcher", func() {
 			}
 			w := newWatcher(dir)
 			defer closeWatcher(w)
+			time.Sleep(5 * time.Second)
 
 			for i := 0; i < n; i++ {
 				oldPth := filepath.Join(dir, fmt.Sprintf("folder%d", i))
