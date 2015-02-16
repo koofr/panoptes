@@ -140,7 +140,7 @@ var _ = Describe("Watcher", func() {
 
 	Context("with a lot of files", func() {
 
-		n := 100
+		n := 250
 
 		It("should work when hundreds of files are created at once", func() {
 			w := newWatcher(dir)
