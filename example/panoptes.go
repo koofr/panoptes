@@ -10,11 +10,11 @@ import (
 func main() {
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s /path/to/watch/dir [/another/path] [/yet/another/path]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s /path/to/watch/dir\n", os.Args[0])
 		return
 	}
 
-	w, err := panoptes.NewWatcher(os.Args[1:], []string{})
+	w, err := panoptes.NewWatcher(os.Args[1])
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "init error: %+v\n", err)
@@ -36,7 +36,7 @@ func main() {
 }
 
 var eventNames = map[panoptes.Op]string{
-	panoptes.Write:  "WRITE",
+	panoptes.Modify: "MODIFY",
 	panoptes.Create: "CREATE",
 	panoptes.Rename: "RENAME",
 	panoptes.Remove: "REMOVE",
