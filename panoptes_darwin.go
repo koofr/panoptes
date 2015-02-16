@@ -22,7 +22,7 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 
 	raw := &fsevents.EventStream{
 		Paths:   []string{path},
-		Latency: 250 * time.Millisecond,
+		Latency: 0 * time.Millisecond,
 		Flags:   fsevents.FileEvents | fsevents.NoDefer,
 	}
 
