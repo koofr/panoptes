@@ -61,7 +61,10 @@ func modifyFile(path string, contents string) panoptes.Event {
 	var _ = fp
 	_, err = fp.WriteString(contents)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	fp.Close()
+	err = fp.Sync()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	err = fp.Close()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return panoptes.Event{
 		Path: path,
