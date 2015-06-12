@@ -5,6 +5,7 @@ package panoptes
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -15,7 +16,9 @@ type LinuxWatcher struct {
 	watchedPath string
 	events      chan Event
 	errors      chan error
+	movedToLock sync.RWMutex
 	movedTo     map[uint32]chan string
+	createdLock sync.RWMutex
 	created     map[string]chan error
 	raw         *fsnotify.Watcher
 	quitCh      chan error
@@ -70,34 +73,46 @@ func (w *LinuxWatcher) translateEvents() {
 					w.recursiveAdd(event.Name)
 					w.sendEvent(newEvent(event.Name, Create))
 				} else {
+					w.createdLock.Lock()
 					w.created[event.Name] = make(chan error, 1)
 					w.created[event.Name] <- nil
+					w.createdLock.Unlock()
 				}
 			case event.RawOp&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE:
+				w.createdLock.RLock()
 				select {
 				case <-w.created[event.Name]:
 					w.sendEvent(newEvent(event.Name, Create))
 				default:
 					w.sendEvent(newEvent(event.Name, Modify))
 				}
+				w.createdLock.RUnlock()
 
 			case event.RawOp&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM:
+				w.movedToLock.Lock()
 				w.movedTo[event.EventID] = make(chan string, 1)
+				w.movedToLock.Unlock()
 
 				go func(event fsnotify.Event) {
+					w.movedToLock.RLock()
 					select {
 					case newPth := <-w.movedTo[event.EventID]:
 						w.sendEvent(newRenameEvent(newPth, event.Name))
 					case <-time.After(500 * time.Millisecond):
 						w.sendEvent(newEvent(event.Name, Remove))
 					}
+					w.movedToLock.RUnlock()
 				}(event)
 
 			case event.RawOp&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO:
 
+				w.movedToLock.RLock()
+				ch := w.movedTo[event.EventID]
+				w.movedToLock.RUnlock()
+
 				go func(event fsnotify.Event) {
 					select {
-					case w.movedTo[event.EventID] <- event.Name:
+					case ch <- event.Name:
 					default:
 						w.sendEvent(newEvent(event.Name, Create))
 					}
@@ -144,7 +159,12 @@ func (w *LinuxWatcher) translateErrors() {
 }
 
 func (w *LinuxWatcher) sendEvent(e Event) {
-	w.events <- e
+	select {
+	case <-w.quitCh:
+		return
+	default:
+		w.events <- e
+	}
 }
 
 func (w *LinuxWatcher) Close() error {
