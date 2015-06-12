@@ -25,6 +25,7 @@ var _ = Describe("Watcher", func() {
 
 	BeforeEach(func() {
 		dir, testNum = sc.NewTest()
+		time.Sleep(time.Second)
 	})
 
 	It("should fire event when file is created", func() {
@@ -148,7 +149,7 @@ var _ = Describe("Watcher", func() {
 
 			for i := 0; i < n; i++ {
 				e := createFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), "ohai")
-				Eventually(w.Events()).Should(Receive(Equal(e)))
+				Eventually(w.Events(), time.Minute).Should(Receive(Equal(e)))
 			}
 		})
 

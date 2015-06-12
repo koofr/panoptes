@@ -22,14 +22,14 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 
 	raw := &fsevents.EventStream{
 		Paths:   []string{path},
-		Latency: 0 * time.Millisecond,
+		Latency: 1 * time.Millisecond,
 		Flags:   fsevents.FileEvents | fsevents.NoDefer,
 	}
 
 	w = &DarwinWatcher{
-		events:  make(chan Event, 256),
+		events:  make(chan Event, 128),
 		errors:  make(chan error),
-		movedTo: make(chan string, 256),
+		movedTo: make(chan string, 128),
 		quitCh:  make(chan error),
 		raw:     raw,
 	}
@@ -78,7 +78,6 @@ func (w *DarwinWatcher) translateEvents() {
 				if w.raw.Paths[0] == event.Path || event.Path == filepath.Join("private", w.raw.Paths[0]) {
 					if event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved {
 						w.errors <- WatchedRootRemovedErr
-
 					}
 					continue
 				}
@@ -105,8 +104,17 @@ func (w *DarwinWatcher) processRenames() {
 		case <-w.quitCh:
 			return
 		case path := <-w.movedTo:
+
+			_, err := os.Stat(path)
+			_, errOld := os.Stat(oldPath)
+
 			if oldPath != "" {
-				go w.sendEvent(newRenameEvent(path, oldPath))
+				switch {
+				case os.IsNotExist(err) && errOld == nil:
+					go w.sendEvent(newRenameEvent(oldPath, path))
+				case err == nil && os.IsNotExist(errOld):
+					go w.sendEvent(newRenameEvent(path, oldPath))
+				}
 				oldPath = ""
 			} else {
 				oldPath = path
@@ -128,7 +136,10 @@ func (w *DarwinWatcher) processRenames() {
 }
 
 func (w *DarwinWatcher) sendEvent(e Event) {
-	w.events <- e
+	select {
+	case w.events <- e:
+	default:
+	}
 }
 
 func (w *DarwinWatcher) Events() <-chan Event {
