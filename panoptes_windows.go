@@ -3,9 +3,11 @@
 package panoptes
 
 import (
-	"github.com/koofr/fsnotify"
 	"os"
+	"sync"
 	"time"
+
+	"github.com/koofr/fsnotify"
 )
 
 const (
@@ -31,6 +33,7 @@ type WinWatcher struct {
 	events      chan Event
 	errors      chan error
 	movedTo     chan string
+	createdLock sync.RWMutex
 	created     map[string]chan error
 	raw         *fsnotify.Watcher
 	isClosed    bool
@@ -79,18 +82,22 @@ func (w *WinWatcher) translateEvents() {
 				if info.IsDir() {
 					w.sendEvent(newEvent(event.Name, Create))
 				} else {
+					w.createdLock.Lock()
 					w.created[event.Name] = make(chan error, 1)
 					w.created[event.Name] <- nil
+					w.createdLock.Unlock()
 				}
 			}
 
 		case event.RawOp&IN_MODIFY == IN_MODIFY:
+			w.createdLock.RLock()
 			select {
 			case <-w.created[event.Name]:
 				w.sendEvent(newEvent(event.Name, Create))
 			default:
 				w.sendEvent(newEvent(event.Name, Modify))
 			}
+			w.createdLock.RUnlock()
 
 		case event.RawOp&IN_MOVED_FROM == IN_MOVED_FROM:
 			go func(event fsnotify.Event) {
