@@ -66,6 +66,10 @@ func NewWatcher(path string) (w *WinWatcher, err error) {
 	return
 }
 
+func isDir(e fsnotify.Event) bool {
+	return e.RawOp&IN_ISDIR == IN_ISDIR
+}
+
 func (w *WinWatcher) translateEvents() {
 	for event := range w.raw.Events {
 		switch {

@@ -22,14 +22,15 @@ type Event struct {
 	Path    string
 	OldPath string
 	Op      Op
+	IsDir   bool
 }
 
-func newEvent(path string, op Op) Event {
-	return Event{Path: path, Op: op}
+func newEvent(path string, op Op, isDir bool) Event {
+	return Event{Path: path, Op: op, IsDir: isDir}
 }
 
-func newRenameEvent(path string, oldPath string) Event {
-	return Event{Path: path, Op: Rename, OldPath: oldPath}
+func newRenameEvent(path string, oldPath string, isDir bool) Event {
+	return Event{Path: path, Op: Rename, OldPath: oldPath, IsDir: isDir}
 }
 
 type Watcher interface {

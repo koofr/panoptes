@@ -50,6 +50,10 @@ func NewWatcher(path string) (w *LinuxWatcher, err error) {
 	return
 }
 
+func isDir(e fsnotify.Event) bool {
+	return e.RawOp&syscall.IN_ISDIR == syscall.IN_ISDIR
+}
+
 func (w *LinuxWatcher) translateEvents() {
 	for {
 		select {
@@ -61,7 +65,7 @@ func (w *LinuxWatcher) translateEvents() {
 			}
 			switch {
 			case event.RawOp&syscall.IN_DELETE == syscall.IN_DELETE:
-				w.sendEvent(newEvent(event.Name, Remove))
+				w.sendEvent(newEvent(event.Name, Remove, isDir(event)))
 			case event.RawOp&syscall.IN_DELETE_SELF == syscall.IN_DELETE_SELF:
 				if w.watchedPath == event.Name {
 					w.errors <- WatchedRootRemovedErr
@@ -71,7 +75,7 @@ func (w *LinuxWatcher) translateEvents() {
 			case event.RawOp&syscall.IN_CREATE == syscall.IN_CREATE:
 				if event.RawOp&syscall.IN_ISDIR == syscall.IN_ISDIR {
 					w.recursiveAdd(event.Name)
-					w.sendEvent(newEvent(event.Name, Create))
+					w.sendEvent(newEvent(event.Name, Create, isDir(event)))
 				} else {
 					w.createdLock.Lock()
 					w.created[event.Name] = make(chan error, 1)
@@ -82,9 +86,9 @@ func (w *LinuxWatcher) translateEvents() {
 				w.createdLock.RLock()
 				select {
 				case <-w.created[event.Name]:
-					w.sendEvent(newEvent(event.Name, Create))
+					w.sendEvent(newEvent(event.Name, Create, isDir(event)))
 				default:
-					w.sendEvent(newEvent(event.Name, Modify))
+					w.sendEvent(newEvent(event.Name, Modify, isDir(event)))
 				}
 				w.createdLock.RUnlock()
 
@@ -97,9 +101,9 @@ func (w *LinuxWatcher) translateEvents() {
 					w.movedToLock.RLock()
 					select {
 					case newPth := <-w.movedTo[event.EventID]:
-						w.sendEvent(newRenameEvent(newPth, event.Name))
+						w.sendEvent(newRenameEvent(newPth, event.Name, isDir(event)))
 					case <-time.After(500 * time.Millisecond):
-						w.sendEvent(newEvent(event.Name, Remove))
+						w.sendEvent(newEvent(event.Name, Remove, isDir(event)))
 					}
 					w.movedToLock.RUnlock()
 				}(event)
@@ -114,7 +118,7 @@ func (w *LinuxWatcher) translateEvents() {
 					select {
 					case ch <- event.Name:
 					default:
-						w.sendEvent(newEvent(event.Name, Create))
+						w.sendEvent(newEvent(event.Name, Create, isDir(event)))
 					}
 				}(event)
 			}
