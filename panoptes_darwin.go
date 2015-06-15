@@ -4,7 +4,6 @@ package panoptes
 
 import (
 	"github.com/go-fsnotify/fsevents"
-	"os"
 	"path/filepath"
 	"time"
 )
@@ -34,7 +33,6 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 		raw:     raw,
 	}
 	w.raw.Start()
-	go w.processRenames()
 	go w.translateEvents()
 
 	return
@@ -63,6 +61,10 @@ var noteDescription = map[fsevents.EventFlags]string{
 	fsevents.ItemIsSymlink:     "IsSymLink",
 }
 
+func isDir(e fsevents.Event) bool {
+	return e.Flags&fsevents.ItemIsDir == fsevents.ItemIsDir
+}
+
 func (w *DarwinWatcher) translateEvents() {
 
 	for {
@@ -83,56 +85,18 @@ func (w *DarwinWatcher) translateEvents() {
 				}
 				switch {
 				case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
-					go w.sendEvent(newEvent(event.Path, Rename))
+					go w.sendEvent(newEvent(event.Path, Rename, isDir(event)))
 				case event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved:
-					go w.sendEvent(newEvent(event.Path, Remove))
+					go w.sendEvent(newEvent(event.Path, Remove, isDir(event)))
 				case event.Flags&fsevents.ItemModified == fsevents.ItemModified &&
 					event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
-					go w.sendEvent(newEvent(event.Path, Modify))
+					go w.sendEvent(newEvent(event.Path, Modify, isDir(event)))
 				case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
-					go w.sendEvent(newEvent(event.Path, Create))
+					go w.sendEvent(newEvent(event.Path, Create, isDir(event)))
 				}
 			}
 		}
 	}
-}
-
-func (w *DarwinWatcher) processRenames() {
-	oldPath := ""
-	for {
-		select {
-		case <-w.quitCh:
-			return
-		case path := <-w.movedTo:
-
-			_, err := os.Stat(path)
-			_, errOld := os.Stat(oldPath)
-
-			if oldPath != "" {
-				switch {
-				case os.IsNotExist(err) && errOld == nil:
-					go w.sendEvent(newRenameEvent(oldPath, path))
-				case err == nil && os.IsNotExist(errOld):
-					go w.sendEvent(newRenameEvent(path, oldPath))
-				}
-				oldPath = ""
-			} else {
-				oldPath = path
-			}
-		case <-time.After(1 * time.Second):
-			if oldPath != "" {
-				_, err := os.Stat(oldPath)
-				if os.IsNotExist(err) {
-					go w.sendEvent(newEvent(oldPath, Remove))
-				}
-				if err == nil {
-					go w.sendEvent(newEvent(oldPath, Create))
-				}
-				oldPath = ""
-			}
-		}
-	}
-
 }
 
 func (w *DarwinWatcher) sendEvent(e Event) {
