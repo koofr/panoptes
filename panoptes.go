@@ -14,6 +14,20 @@ const (
 	Rename                // 8
 )
 
+func (op Op) String() string {
+	switch op {
+	case Create:
+		return "create"
+	case Modify:
+		return "modify"
+	case Remove:
+		return "remove"
+	case Rename:
+		return "rename"
+	}
+	return "unknown"
+}
+
 var (
 	WatchedRootRemovedErr = fmt.Errorf("Watched root was removed")
 )
