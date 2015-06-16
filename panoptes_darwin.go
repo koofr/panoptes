@@ -3,9 +3,10 @@
 package panoptes
 
 import (
-	"github.com/go-fsnotify/fsevents"
 	"path/filepath"
 	"time"
+
+	"github.com/koofr/fsevents"
 )
 
 type DarwinWatcher struct {
