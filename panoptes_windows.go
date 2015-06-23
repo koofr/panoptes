@@ -59,7 +59,6 @@ func NewWatcher(path string) (w *WinWatcher, err error) {
 	}
 
 	go w.translateEvents()
-	go w.translateErrors()
 
 	w.raw.Add(path)
 
@@ -71,56 +70,77 @@ func isDir(e fsnotify.Event) bool {
 }
 
 func (w *WinWatcher) translateEvents() {
-	for event := range w.raw.Events {
-		switch {
-		case event.RawOp&IN_DELETE == IN_DELETE:
-			w.sendEvent(newEvent(event.Name, Remove, isDir(event)))
-		case event.RawOp&IN_DELETE_SELF == IN_DELETE_SELF:
-			if event.Name == w.watchedPath {
-				w.errors <- WatchedRootRemovedErr
-			} else {
-				continue
+
+	defer func() {
+		close(w.errors)
+		close(w.events)
+	}()
+
+	for {
+		select {
+		case <-w.quitCh:
+			return
+		case err, ok := <-w.raw.Errors:
+			if !ok {
+				return
 			}
-		case event.RawOp&IN_CREATE == IN_CREATE:
-			if info, err := os.Stat(event.Name); err == nil {
-				if info.IsDir() {
-					w.sendEvent(newEvent(event.Name, Create, isDir(event)))
+			w.errors <- err
+
+		case event, ok := <-w.raw.Events:
+			if !ok {
+				return
+			}
+
+			switch {
+			case event.RawOp&IN_DELETE == IN_DELETE:
+				w.events <- newEvent(event.Name, Remove, isDir(event))
+			case event.RawOp&IN_DELETE_SELF == IN_DELETE_SELF:
+				if event.Name == w.watchedPath {
+					w.errors <- WatchedRootRemovedErr
 				} else {
-					w.createdLock.Lock()
-					w.created[event.Name] = make(chan error, 1)
-					w.created[event.Name] <- nil
-					w.createdLock.Unlock()
+					continue
 				}
-			}
-
-		case event.RawOp&IN_MODIFY == IN_MODIFY:
-			w.createdLock.RLock()
-			select {
-			case <-w.created[event.Name]:
-				w.sendEvent(newEvent(event.Name, Create, isDir(event)))
-			default:
-				w.sendEvent(newEvent(event.Name, Modify, isDir(event)))
-			}
-			w.createdLock.RUnlock()
-
-		case event.RawOp&IN_MOVED_FROM == IN_MOVED_FROM:
-			go func(event fsnotify.Event) {
-				select {
-				case newPth := <-w.movedTo:
-					w.sendEvent(newRenameEvent(newPth, event.Name, isDir(event)))
-				case <-time.After(500 * time.Millisecond):
-					w.sendEvent(newEvent(event.Name, Remove, isDir(event)))
+			case event.RawOp&IN_CREATE == IN_CREATE:
+				if info, err := os.Stat(event.Name); err == nil {
+					if info.IsDir() {
+						w.events <- newEvent(event.Name, Create, isDir(event))
+					} else {
+						w.createdLock.Lock()
+						w.created[event.Name] = make(chan error, 1)
+						w.created[event.Name] <- nil
+						w.createdLock.Unlock()
+					}
 				}
-			}(event)
 
-		case event.RawOp&IN_MOVED_TO == IN_MOVED_TO:
-			go func(event fsnotify.Event) {
+			case event.RawOp&IN_MODIFY == IN_MODIFY:
+				w.createdLock.RLock()
 				select {
-				case w.movedTo <- event.Name:
+				case <-w.created[event.Name]:
+					w.events <- newEvent(event.Name, Create, isDir(event))
 				default:
-					w.sendEvent(newEvent(event.Name, Create, isDir(event)))
+					w.events <- newEvent(event.Name, Modify, isDir(event))
 				}
-			}(event)
+				w.createdLock.RUnlock()
+
+			case event.RawOp&IN_MOVED_FROM == IN_MOVED_FROM:
+				go func(event fsnotify.Event) {
+					select {
+					case newPth := <-w.movedTo:
+						w.events <- newRenameEvent(newPth, event.Name, isDir(event))
+					case <-time.After(500 * time.Millisecond):
+						w.events <- newEvent(event.Name, Remove, isDir(event))
+					}
+				}(event)
+
+			case event.RawOp&IN_MOVED_TO == IN_MOVED_TO:
+				go func(event fsnotify.Event) {
+					select {
+					case w.movedTo <- event.Name:
+					default:
+						w.events <- newEvent(event.Name, Create, isDir(event))
+					}
+				}(event)
+			}
 		}
 	}
 }
@@ -133,25 +153,12 @@ func (w *WinWatcher) Errors() <-chan error {
 	return w.errors
 }
 
-func (w *WinWatcher) translateErrors() {
-	for err := range w.raw.Errors {
-		w.errors <- err
-	}
-}
-
-func (w *WinWatcher) sendEvent(e Event) {
-	w.events <- e
-}
-
 func (w *WinWatcher) Close() error {
 	if w.isClosed {
 		return nil
 	}
 	w.isClosed = true
 	close(w.quitCh)
-
 	err := w.raw.Close()
-	close(w.events)
-	close(w.errors)
 	return err
 }
