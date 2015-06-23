@@ -12,7 +12,6 @@ import (
 type DarwinWatcher struct {
 	events   chan Event
 	errors   chan error
-	movedTo  chan string
 	raw      *fsevents.EventStream
 	isClosed bool
 	quitCh   chan error
@@ -27,11 +26,10 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 	}
 
 	w = &DarwinWatcher{
-		events:  make(chan Event, 128),
-		errors:  make(chan error),
-		movedTo: make(chan string, 128),
-		quitCh:  make(chan error),
-		raw:     raw,
+		events: make(chan Event, 128),
+		errors: make(chan error),
+		quitCh: make(chan error),
+		raw:    raw,
 	}
 	w.raw.Start()
 	go w.translateEvents()
@@ -68,6 +66,11 @@ func isDir(e fsevents.Event) bool {
 
 func (w *DarwinWatcher) translateEvents() {
 
+	defer func() {
+		close(w.events)
+		close(w.errors)
+	}()
+
 	for {
 		select {
 		case <-w.quitCh:
@@ -86,24 +89,17 @@ func (w *DarwinWatcher) translateEvents() {
 				}
 				switch {
 				case event.Flags&fsevents.ItemRenamed == fsevents.ItemRenamed:
-					go w.sendEvent(newEvent(event.Path, Rename, isDir(event)))
+					w.events <- newEvent(event.Path, Rename, isDir(event))
 				case event.Flags&fsevents.ItemRemoved == fsevents.ItemRemoved:
-					go w.sendEvent(newEvent(event.Path, Remove, isDir(event)))
+					w.events <- newEvent(event.Path, Remove, isDir(event))
 				case event.Flags&fsevents.ItemModified == fsevents.ItemModified &&
 					event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
-					go w.sendEvent(newEvent(event.Path, Modify, isDir(event)))
+					w.events <- newEvent(event.Path, Modify, isDir(event))
 				case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
-					go w.sendEvent(newEvent(event.Path, Create, isDir(event)))
+					w.events <- newEvent(event.Path, Create, isDir(event))
 				}
 			}
 		}
-	}
-}
-
-func (w *DarwinWatcher) sendEvent(e Event) {
-	select {
-	case w.events <- e:
-	default:
 	}
 }
 
@@ -122,8 +118,5 @@ func (w *DarwinWatcher) Close() error {
 	w.isClosed = true
 	close(w.quitCh)
 	w.raw.Stop()
-	close(w.events)
-	close(w.errors)
-	close(w.movedTo)
 	return nil
 }
