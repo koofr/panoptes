@@ -42,6 +42,38 @@ var _ = Describe("Watcher", func() {
 		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create event")
 	})
 
+	It("should fire event when file symlink is created", func() {
+		w := newWatcher(dir)
+		defer closeWatcher(w)
+
+		e := createFile(filepath.Join(dir, "afile.txt"), "afile")
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create file event")
+		e = symlink(filepath.Join(dir, "afile.txt"), filepath.Join(dir, "alink.txt"))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create link event")
+	})
+
+	It("should fire event when folder symlink is created", func() {
+		w := newWatcher(dir)
+		defer closeWatcher(w)
+		e := mkdir(filepath.Join(dir, "folder"))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create event")
+		e = symlink(filepath.Join(dir, "folder"), filepath.Join(dir, "folderlink"))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create link event")
+
+		e = createFile(filepath.Join(dir, "folder", "file"), "file")
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create link event")
+		Consistently(w.Events()).ShouldNot(Receive())
+	})
+
+	It("should fire event when relative symlink to folder is created", func() {
+		w := newWatcher(dir)
+		defer closeWatcher(w)
+		e := mkdir(filepath.Join(dir, "folder"))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create event")
+		e = symlink("folder", filepath.Join(dir, "folderlink"))
+		Eventually(w.Events()).Should(Receive(Equal(e)), "receive create link event")
+	})
+
 	It("should fire events when file in new folder is created", func() {
 		w := newWatcher(dir)
 		defer closeWatcher(w)
@@ -49,7 +81,6 @@ var _ = Describe("Watcher", func() {
 		Eventually(w.Events()).Should(Receive(Equal(e1)))
 		e2 := createFile(filepath.Join(dir, "folder", "file.txt"), "hello world")
 		Eventually(w.Events()).Should(Receive(Equal(e2)))
-
 	})
 
 	It("should fire events when folder in new folder is created", func() {

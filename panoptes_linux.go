@@ -5,6 +5,7 @@ package panoptes
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -86,10 +87,38 @@ func (w *LinuxWatcher) translateEvents() {
 					w.recursiveAdd(event.Name)
 					w.events <- newEvent(event.Name, Create, isDir(event))
 				} else {
-					w.createdLock.Lock()
-					w.created[event.Name] = make(chan error, 1)
-					w.created[event.Name] <- nil
-					w.createdLock.Unlock()
+					info, err := os.Stat(event.Name)
+					if err != nil {
+						continue
+					}
+					linfo, err := os.Lstat(event.Name)
+					if err != nil {
+						continue
+					}
+
+					if linfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+						if info.IsDir() {
+							if lnk, err := os.Readlink(event.Name); err == nil {
+								if !filepath.IsAbs(lnk) {
+									lnk = filepath.Join(filepath.Dir(event.Name), lnk)
+								}
+								if strings.HasPrefix(lnk, w.watchedPath) {
+									err := w.recursiveAdd(event.Name)
+									if err != nil {
+										panic(err)
+									}
+									w.events <- newEvent(event.Name, Create, true)
+								}
+							}
+						} else {
+							w.events <- newEvent(event.Name, Create, false)
+						}
+					} else {
+						w.createdLock.Lock()
+						w.created[event.Name] = make(chan error, 1)
+						w.created[event.Name] <- nil
+						w.createdLock.Unlock()
+					}
 				}
 			case event.RawOp&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE:
 				w.createdLock.RLock()

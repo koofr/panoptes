@@ -3,6 +3,7 @@ package panoptes_test
 import (
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/koofr/panoptes"
@@ -30,17 +31,37 @@ func mkdir(path string) panoptes.Event {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return panoptes.Event{
-		Path: path,
-		Op:   panoptes.Create,
+		Path:  path,
+		Op:    panoptes.Create,
+		IsDir: true,
+	}
+}
+
+func symlink(a, b string) panoptes.Event {
+	absA := a
+	if !filepath.IsAbs(absA) {
+		absA = filepath.Join(filepath.Dir(b), a)
+	}
+	info, err := os.Stat(absA)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	err = os.Symlink(a, b)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return panoptes.Event{
+		Path:  b,
+		Op:    panoptes.Create,
+		IsDir: info.IsDir(),
 	}
 }
 
 func remove(path string) panoptes.Event {
-	err := os.Remove(path)
+	info, err := os.Stat(path)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	err = os.Remove(path)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return panoptes.Event{
-		Path: path,
-		Op:   panoptes.Remove,
+		Path:  path,
+		Op:    panoptes.Remove,
+		IsDir: info.IsDir(),
 	}
 }
 
@@ -73,11 +94,14 @@ func modifyFile(path string, contents string) panoptes.Event {
 }
 
 func rename(oldpth, newpth string) panoptes.Event {
-	err := os.Rename(oldpth, newpth)
+	info, err := os.Stat(oldpth)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	err = os.Rename(oldpth, newpth)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return panoptes.Event{
 		Path:    newpth,
 		OldPath: oldpth,
 		Op:      panoptes.Rename,
+		IsDir:   info.IsDir(),
 	}
 }
