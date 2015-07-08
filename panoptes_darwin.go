@@ -115,7 +115,26 @@ func (w *DarwinWatcher) translateEvents() {
 								if !filepath.IsAbs(lnk) {
 									lnk = filepath.Join(filepath.Dir(event.Path), lnk)
 								}
-								if strings.HasPrefix(lnk, w.watchedPath) {
+
+								parents := []string{} // all parents of this link
+
+								recursive := false // assume it is not recursive
+								for tmp := lnk; filepath.Clean(tmp) != "/"; tmp = filepath.Dir(tmp) {
+									parents = append(parents, tmp)
+								}
+								for _, part := range parents {
+									// if any parent of link path is same file as the file link points to, it is a cycle
+									statB, err := os.Stat(part)
+									if err != nil {
+										continue
+									}
+									if os.SameFile(info, statB) {
+										recursive = true
+										break
+									}
+								}
+
+								if !recursive && strings.HasPrefix(lnk, w.watchedPath) {
 									w.events <- newEvent(event.Path, Create, true)
 								}
 							}
