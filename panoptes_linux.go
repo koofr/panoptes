@@ -103,10 +103,7 @@ func (w *LinuxWatcher) translateEvents() {
 									lnk = filepath.Join(filepath.Dir(event.Name), lnk)
 								}
 								if strings.HasPrefix(lnk, w.watchedPath) {
-									err := w.recursiveAdd(event.Name)
-									if err != nil {
-										panic(err)
-									}
+									w.recursiveAdd(event.Name)
 									w.events <- newEvent(event.Name, Create, true)
 								}
 							}

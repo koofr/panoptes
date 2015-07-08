@@ -3,18 +3,21 @@
 package panoptes
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/koofr/fsevents"
 )
 
 type DarwinWatcher struct {
-	events   chan Event
-	errors   chan error
-	raw      *fsevents.EventStream
-	isClosed bool
-	quitCh   chan error
+	watchedPath string
+	events      chan Event
+	errors      chan error
+	raw         *fsevents.EventStream
+	isClosed    bool
+	quitCh      chan error
 }
 
 func NewWatcher(path string) (w *DarwinWatcher, err error) {
@@ -26,10 +29,11 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 	}
 
 	w = &DarwinWatcher{
-		events: make(chan Event, 128),
-		errors: make(chan error),
-		quitCh: make(chan error),
-		raw:    raw,
+		watchedPath: path,
+		events:      make(chan Event, 128),
+		errors:      make(chan error),
+		quitCh:      make(chan error),
+		raw:         raw,
 	}
 	w.raw.Start()
 	go w.translateEvents()
@@ -96,7 +100,31 @@ func (w *DarwinWatcher) translateEvents() {
 					event.Flags&fsevents.ItemInodeMetaMod == fsevents.ItemInodeMetaMod:
 					w.events <- newEvent(event.Path, Modify, isDir(event))
 				case event.Flags&fsevents.ItemCreated == fsevents.ItemCreated:
-					w.events <- newEvent(event.Path, Create, isDir(event))
+					info, err := os.Stat(event.Path)
+					if err != nil {
+						continue
+					}
+					linfo, err := os.Lstat(event.Path)
+					if err != nil {
+						continue
+					}
+
+					if linfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+						if info.IsDir() {
+							if lnk, err := os.Readlink(event.Path); err == nil {
+								if !filepath.IsAbs(lnk) {
+									lnk = filepath.Join(filepath.Dir(event.Path), lnk)
+								}
+								if strings.HasPrefix(lnk, w.watchedPath) {
+									w.events <- newEvent(event.Path, Create, true)
+								}
+							}
+						} else {
+							w.events <- newEvent(event.Path, Create, false)
+						}
+					} else {
+						w.events <- newEvent(event.Path, Create, isDir(event))
+					}
 				}
 			}
 		}
