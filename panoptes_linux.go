@@ -4,6 +4,7 @@ package panoptes
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -102,6 +103,29 @@ func (w *LinuxWatcher) translateEvents() {
 								if !filepath.IsAbs(lnk) {
 									lnk = filepath.Join(filepath.Dir(event.Name), lnk)
 								}
+
+								parents := []string{} // all parents of this link
+
+								recursive := false // assume it is not recursive
+								for tmp := lnk; path.Clean(tmp) != "/"; tmp = path.Dir(tmp) {
+									parents = append(parents, tmp)
+								}
+								for _, part := range parents {
+									// if any parent of link path is same file as the file link points to, it is a cycle
+									statB, err := os.Stat(part)
+									if err != nil {
+										continue
+									}
+									if os.SameFile(info, statB) {
+										recursive = true
+										break
+									}
+								}
+
+								if recursive {
+									continue
+								}
+
 								if strings.HasPrefix(lnk, w.watchedPath) {
 									w.recursiveAdd(event.Name)
 									w.events <- newEvent(event.Name, Create, true)
@@ -134,13 +158,15 @@ func (w *LinuxWatcher) translateEvents() {
 
 				go func(event fsnotify.Event) {
 					w.movedToLock.RLock()
+					defer w.movedToLock.RUnlock()
 					select {
+					case <-w.quitCh:
+						return
 					case newPth := <-w.movedTo[event.EventID]:
 						w.events <- newRenameEvent(newPth, event.Name, isDir(event))
 					case <-time.After(500 * time.Millisecond):
 						w.events <- newEvent(event.Name, Remove, isDir(event))
 					}
-					w.movedToLock.RUnlock()
 				}(event)
 
 			case event.RawOp&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO:
@@ -151,6 +177,8 @@ func (w *LinuxWatcher) translateEvents() {
 
 				go func(event fsnotify.Event) {
 					select {
+					case <-w.quitCh:
+						return
 					case ch <- event.Name:
 					default:
 						w.events <- newEvent(event.Name, Create, isDir(event))
