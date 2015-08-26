@@ -108,6 +108,15 @@ func (w *WinWatcher) translateEvents() {
 						w.createdLock.Lock()
 						w.created[event.Name] = make(chan error, 1)
 						w.created[event.Name] <- nil
+						time.AfterFunc(3*time.Second, func() {
+							w.createdLock.Lock()
+							defer w.createdLock.Unlock()
+							select {
+							case <-w.created[event.Name]:
+								w.events <- newEvent(event.Name, Create, isDir(event))
+							default:
+							}
+						})
 						w.createdLock.Unlock()
 					}
 				}
