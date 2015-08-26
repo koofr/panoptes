@@ -30,7 +30,7 @@ func NewWatcher(path string) (w *DarwinWatcher, err error) {
 
 	w = &DarwinWatcher{
 		watchedPath: path,
-		events:      make(chan Event, 128),
+		events:      make(chan Event, 1024),
 		errors:      make(chan error),
 		quitCh:      make(chan error),
 		raw:         raw,

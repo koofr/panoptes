@@ -50,7 +50,7 @@ func NewWatcher(path string) (w *WinWatcher, err error) {
 
 	w = &WinWatcher{
 		watchedPath: path,
-		events:      make(chan Event),
+		events:      make(chan Event, 1024),
 		errors:      make(chan error),
 		movedTo:     make(chan string),
 		created:     make(map[string]chan error),
